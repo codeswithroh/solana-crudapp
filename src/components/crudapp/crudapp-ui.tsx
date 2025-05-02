@@ -1,20 +1,60 @@
 import { Keypair, PublicKey } from '@solana/web3.js'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ExplorerLink } from '../cluster/cluster-ui'
 import { ellipsify } from '../ui/ui-layout'
 import { useCrudappProgram, useCrudappProgramAccount } from './crudapp-data-access'
+import { useWallet } from '@solana/wallet-adapter-react'
 
 export function CrudappCreate() {
-  const { initialize } = useCrudappProgram()
+  const [title, setTitle] = useState('')
+  const [message, setMessage] = useState('')
+
+  const { createJournalEntry } = useCrudappProgram()
+  const { publicKey } = useWallet()
+
+  const isFormValid = title.trim() !== '' && message.trim() !== ''
+
+  const handleSubmit = () => {
+    if (!publicKey) {
+      return <p>Connect your wallet.</p>
+    }
+
+    if (isFormValid && publicKey) {
+      createJournalEntry.mutateAsync({ title, message, owner: publicKey })
+    }
+  }
 
   return (
-    <button
-      className="btn btn-xs lg:btn-md btn-primary"
-      onClick={() => initialize.mutateAsync(Keypair.generate())}
-      disabled={initialize.isPending}
-    >
-      Create {initialize.isPending && '...'}
-    </button>
+    <div className="card card-bordered border-base-300 border-4 text-neutral-content">
+      <div className="card-body items-center text-center">
+        <div className="space-y-6">
+          <div className="card-actions justify-around">
+            <input
+              type="text"
+              placeholder="Title"
+              className="input input-bordered input-primary w-full max-w-xs"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <textarea
+              placeholder="Message"
+              className="textarea textarea-primary w-full max-w-xs h-24"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            ></textarea>
+          </div>
+          <div className="text-center space-y-4">
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={!isFormValid || createJournalEntry.isPending}
+            >
+              Create
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -52,69 +92,60 @@ export function CrudappList() {
 }
 
 function CrudappCard({ account }: { account: PublicKey }) {
-  const { accountQuery, incrementMutation, setMutation, decrementMutation, closeMutation } = useCrudappProgramAccount({
+  const { accountQuery, updateJournalEntry, deleteJournalEntry } = useCrudappProgramAccount({
     account,
   })
+  console.log('account Data', accountQuery.data)
+  const title = accountQuery?.data?.title || ''
+  const [message, setMessage] = useState('')
 
-  const count = useMemo(() => accountQuery.data?.count ?? 0, [accountQuery.data?.count])
+  const { publicKey } = useWallet()
+
+  const isFormValid = message.trim() !== ''
+
+  const handleSubmit = () => {
+    if (!publicKey) {
+      return <p>Connect your wallet.</p>
+    }
+    if (isFormValid && publicKey) {
+      updateJournalEntry.mutateAsync({ title, message, owner: publicKey })
+    }
+  }
 
   return accountQuery.isLoading ? (
     <span className="loading loading-spinner loading-lg"></span>
   ) : (
-    <div className="card card-bordered border-base-300 border-4 text-neutral-content">
-      <div className="card-body items-center text-center">
-        <div className="space-y-6">
+    <>
+      <div className="card card-bordered border-base-300 border-4 text-neutral-content">
+        <div className="card-body items-center text-center">
           <h2 className="card-title justify-center text-3xl cursor-pointer" onClick={() => accountQuery.refetch()}>
-            {count}
+            {accountQuery.data?.title}
           </h2>
-          <div className="card-actions justify-around">
+          <p>{accountQuery.data?.message}</p>
+          <div className="card-actions space-y-6">
+            <textarea
+              placeholder="Message"
+              className="textarea textarea-primary w-full max-w-xs h-24"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            ></textarea>
             <button
-              className="btn btn-xs lg:btn-md btn-outline"
-              onClick={() => incrementMutation.mutateAsync()}
-              disabled={incrementMutation.isPending}
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={!isFormValid || updateJournalEntry.isPending}
             >
-              Increment
+              Update Journal Entry
             </button>
             <button
-              className="btn btn-xs lg:btn-md btn-outline"
-              onClick={() => {
-                const value = window.prompt('Set value to:', count.toString() ?? '0')
-                if (!value || parseInt(value) === count || isNaN(parseInt(value))) {
-                  return
-                }
-                return setMutation.mutateAsync(parseInt(value))
-              }}
-              disabled={setMutation.isPending}
+              className="btn btn-error"
+              onClick={() => deleteJournalEntry.mutateAsync(title)}
+              disabled={deleteJournalEntry.isPending}
             >
-              Set
-            </button>
-            <button
-              className="btn btn-xs lg:btn-md btn-outline"
-              onClick={() => decrementMutation.mutateAsync()}
-              disabled={decrementMutation.isPending}
-            >
-              Decrement
-            </button>
-          </div>
-          <div className="text-center space-y-4">
-            <p>
-              <ExplorerLink path={`account/${account}`} label={ellipsify(account.toString())} />
-            </p>
-            <button
-              className="btn btn-xs btn-secondary btn-outline"
-              onClick={() => {
-                if (!window.confirm('Are you sure you want to close this account?')) {
-                  return
-                }
-                return closeMutation.mutateAsync()
-              }}
-              disabled={closeMutation.isPending}
-            >
-              Close
+              Delete
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
